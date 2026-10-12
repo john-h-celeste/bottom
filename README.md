@@ -2,7 +2,7 @@ requirements:
 1. deploy to gcp
 2. stress-ng bash script
 3. service to start stress-ng
-4. use named pipes (???)
+4. use named pipes
 5. create a user and group for the api server
 6. custom api server to monitor metrics
 7. custom dashboard to monitor remotely
