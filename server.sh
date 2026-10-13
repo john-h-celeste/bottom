@@ -1,23 +1,47 @@
 #! /bin/bash
 
+set -ex
+
 # api server
 # read commands from nc
-# one client can be connected at any time
+# only one client can be connected at any time
 
-if [ "$1" -eq sub ]; then
+if [ "$1" == sub ]; then
 	while read line; do
         case $line in
             stats)
                 cat /proc/stat
             ;;
+            load)
+                cat /proc/loadavg
+            ;;
+            cpu)
+                cat /proc/cpuinfo
+            ;;
+            free)
+                free
+            ;;
+            df)
+                df
+            ;;
+            partitions)
+                cat /proc/partitions
+            ;;
+            diskstats)
+                cat /proc/diskstats
+            ;;
+            mount)
+                mount
+            ;;
             *)
                 echo "command unrecognized"
             ;;
         esac
+        echo END "$line"
 	done
 	exit 0
 fi
 
 while true; do
-	nc -l 9375 -e "$0 sub"
+	nc -l 9375 --keep-open -e "$0 sub"
 done
