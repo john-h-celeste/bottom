@@ -18,11 +18,11 @@ if [ "$1" == sub ]; then
             cpu)
                 cat /proc/cpuinfo
             ;;
-            free)
-                free
+            meminfo)
+                cat /proc/meminfo
             ;;
-            df)
-                df
+            mountinfo)
+                cat /proc/self/mountinfo
             ;;
             partitions)
                 cat /proc/partitions
@@ -30,8 +30,8 @@ if [ "$1" == sub ]; then
             diskstats)
                 cat /proc/diskstats
             ;;
-            mount)
-                mount
+            mounts)
+                cat /proc/self/mounts
             ;;
             *)
                 echo "command unrecognized"
