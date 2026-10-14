@@ -32,7 +32,7 @@ class Client:
 		return out
 
 	def run(self, command):
-		return self.runs([command])
+		return self.runs([command])[0]
 
 def connect(host, port):
 	if ':' in host:
