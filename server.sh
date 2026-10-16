@@ -22,10 +22,7 @@ if [ "$1" == sub ]; then
                 cat /proc/meminfo
             ;;
             lsblk)
-                lsblk -J
-            ;;
-            partitions)
-                cat /proc/partitions
+                lsblk -Jlb -o NAME,KNAME,PATH,MAJ:MIN,FSAVAIL,FSSIZE,FSTYPE,FSUSED,FSROOTS,FSVER,MOUNTPOINT,MOUNTPOINTS,LABEL,UUID,PTUUID,PTTYPE,PARTTYPE,PARTTYPENAME,PARTLABEL,PARTUUID,PARTFLAGS,RO,MODEL,SERIAL,SIZE,STATE,OWNER,GROUP,MODE,TYPE,WWN,PKNAME,REV,VENDOR | jq '.blockdevices'
             ;;
             diskstats)
                 cat /proc/diskstats
