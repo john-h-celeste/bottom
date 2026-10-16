@@ -21,17 +21,14 @@ if [ "$1" == sub ]; then
             meminfo)
                 cat /proc/meminfo
             ;;
-            mountinfo)
-                cat /proc/self/mountinfo
+            lsblk)
+                lsblk -J
             ;;
             partitions)
                 cat /proc/partitions
             ;;
             diskstats)
                 cat /proc/diskstats
-            ;;
-            mounts)
-                cat /proc/self/mounts
             ;;
             *)
                 echo "command unrecognized"
