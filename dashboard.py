@@ -131,13 +131,23 @@ def cpugraph(plot):
 	try:
 		data = []
 		currusages = getcpuusage()
+		cpucount = len(currusages) - 1
+
+		# set up total cpu graph
+		totalcpu, = plot.plot([], [], label = 'Total CPU usage')
+		plot.set_xlim(10, 0)
+		plot.set_ylim(0, 4.5)
+		plot.legend()
+
+		# initialize sliding window of cpu usages
 		usages = collections.deque(maxlen = 5)
 		for i in range(5):
 			usages.append((time.time(), getcpuusage()))
 			time.sleep(0.2)
+
 		while running:
 			now = time.time()
-			usages.append((time.time(), getcpuusage()))
+			usages.append((now, getcpuusage()))
 			prevtime,prevusages = usages[0]
 			currtime,currusages = usages[-1]
 			difference = [[c - p for p,c in zip(ps, cs)] for ps,cs in zip(prevusages, currusages)]
@@ -146,7 +156,7 @@ def cpugraph(plot):
 			for i,d in enumerate(difference):
 				for j,dd in enumerate(d):
 					entry[(i, j)] = dd / dt / USER_HZ
-			print(dt)
+				entry[(i, 'usage')] = (4 if i == 0 else 1) - (d[3] / dt / USER_HZ)
 
 			data.append(entry)
 			data = [x for x in data if now - x['time'] < 60]
@@ -154,15 +164,11 @@ def cpugraph(plot):
 			timeseries = [now - t for t in series('time')]
 
 			lockcanvas()
-			plot.clear()
 			# for j in range(1, 5):
 			# 	for i in range(10):
 			# 		plot.plot(timeseries, series((j, i)), label = f'cpu {j}, series {i}')
-			for i in range(10):
-				plot.plot(timeseries, [v / 4 for v in series((0, i))], label = f'series {i}')
-			plot.set_xlim(10, 0)
-			plot.set_ylim(0, 1)
-			plot.legend()
+			totalcpu.set_xdata(timeseries)
+			totalcpu.set_ydata(series((0, 'usage')))
 			unlockcanvas()
 			time.sleep(0.2)
 	except client.ShutDown:
