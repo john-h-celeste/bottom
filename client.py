@@ -9,6 +9,7 @@ import selectors
 import time
 
 clients = []
+running = True
 
 def drainqueue(q):
 	items = []
@@ -20,27 +21,36 @@ def drainqueue(q):
 	return items
 
 def sendthread():
-	while True:
-		for client in clients:
-			tosend = drainqueue(client.tosend)
-			client._sends([message for tid,message in tosend])
-			for tid,message in tosend:
-				client.waiting.put(tid)
+	while running:
+		try:
+			for client in clients:
+				tosend = drainqueue(client.tosend)
+				client._sends([message for tid,message in tosend])
+				for tid,message in tosend:
+					client.waiting.put(tid)
+		except queue.ShutDown:
+			break
 
 selector = selectors.DefaultSelector()
 
 def recvthread():
-	while len(clients) == 0:
+	while len(clients) == 0 and running:
 		time.sleep(0.1) # wait for a connection to start
-	while True:
-		for key,mask in selector.select():
-			client = key.data
-			message = client._recv()
-			tid = client.waiting.get()
-			client.recieved[tid].put(message)
+	while running:
+		try:
+			for key,mask in selector.select():
+				client = key.data
+				message = client._recv()
+				tid = client.waiting.get()
+				client.recieved[tid].put(message)
+		except queue.ShutDown:
+			break
 
 threading.Thread(target = sendthread).start()
 threading.Thread(target = recvthread).start()
+
+class ShutDown(Exception):
+	pass
 
 class Client:
 	def __init__(self, s):
@@ -59,8 +69,11 @@ class Client:
 
 	def sends(self, commands):
 		tid = threading.get_ident()
-		for command in commands:
-			self.tosend.put((tid, command))
+		try:
+			for command in commands:
+				self.tosend.put((tid, command))
+		except queue.ShutDown:
+			raise ShutDown
 
 	def send(self, command):
 		self.sends([command])
@@ -74,7 +87,10 @@ class Client:
 
 	def recv(self):
 		tid = threading.get_ident()
-		return self.recieved[tid].get()
+		try:
+			return self.recieved[tid].get()
+		except queue.ShutDown:
+			raise ShutDown
 
 	def runs(self, commands):
 		self.sends(commands)
@@ -98,6 +114,7 @@ def connect(host, port):
 	return Client(s)
 
 def shutdown():
+	running = False
 	for client in clients:
 		client.tosend.shutdown()
 		client.waiting.shutdown()

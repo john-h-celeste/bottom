@@ -92,65 +92,95 @@ def getdiskinfo():
 	print(repr(lsblkdata))
 	print(repr(diskstats))
 
-def loadcollector(plot):
-	x = []
-	y1 = []
-	y2 = []
-	y3 = []
-	while running:
-		load1,load5,load15 = getload()
-		x.append(time.time())
-		y1.append(load1)
-		y2.append(load5)
-		y3.append(load15)
-		plot.clear()
-		now = time.time()
-		x2 = [now - t for t in x if now - t < 60]
-		plot.plot(x2, y1[-len(x2):])
-		plot.plot(x2, y2[-len(x2):])
-		plot.plot(x2, y3[-len(x2):])
-		plot.set_xlim(60, 0)
-		plot.set_ylim(0, top = None)
-		canvas.draw()
-		time.sleep(1)
+def loadgraph(plot):
+	try:
+		data = []
+		while running:
+			now = time.time()
+			load1,load5,load15 = getload()
+			entry = {'time': now, 'l1': load1, 'l5': load5, 'l15': load15}
+
+			data.append(entry)
+			data = [x for x in data if now - x['time'] < 60]
+			series = lambda k: [x[k] for x in data]
+			timeseries = [now - t for t in series('time')]
+
+			lockcanvas()
+			plot.clear()
+			plot.set_xlim(60, 0)
+			#plot.set_ylim(0, top = None)
+			plot.plot(timeseries, series('l1'))
+			plot.plot(timeseries, series('l5'))
+			plot.plot(timeseries, series('l15'))
+			unlockcanvas()
+			time.sleep(5)
+	except client.ShutDown:
+		pass
 
 def getcpuusage():
 	stats = getstats()
 	cpus = stats['cpus']
 	total = stats['cpu']
-	usage = (total[0], total[1], total[2], total[3])
 	usages = []
-	for cpu in cpus:
-		usages.append((cpu[0], cpu[1], cpu[2], cpu[3]))
-	return [usage, *usages]
+	for cpu in [total, *cpus]:
+		usages.append((cpu[0], cpu[1], cpu[2], cpu[3], *cpu[3:]))
+	return usages
 
 USER_HZ = 100
-def usagecollector(plot):
-	currusages = getcpuusage()
-	x = []
-	ys = [[] for _ in currusages]
-	usages = collections.deque(maxlen = 5)
-	for i in range(5):
-		usages.append((time.time(), getcpuusage()))
-		time.sleep(0.2)
+def cpugraph(plot):
+	try:
+		data = []
+		currusages = getcpuusage()
+		usages = collections.deque(maxlen = 5)
+		for i in range(5):
+			usages.append((time.time(), getcpuusage()))
+			time.sleep(0.2)
+		while running:
+			now = time.time()
+			usages.append((time.time(), getcpuusage()))
+			prevtime,prevusages = usages[0]
+			currtime,currusages = usages[-1]
+			difference = [[c - p for p,c in zip(ps, cs)] for ps,cs in zip(prevusages, currusages)]
+			dt = currtime - prevtime
+			entry = {'time': currtime}
+			for i,d in enumerate(difference):
+				for j,dd in enumerate(d):
+					entry[(i, j)] = dd / dt / USER_HZ
+			print(dt)
+
+			data.append(entry)
+			data = [x for x in data if now - x['time'] < 60]
+			series = lambda k: [x[k] for x in data]
+			timeseries = [now - t for t in series('time')]
+
+			lockcanvas()
+			plot.clear()
+			# for j in range(1, 5):
+			# 	for i in range(10):
+			# 		plot.plot(timeseries, series((j, i)), label = f'cpu {j}, series {i}')
+			for i in range(10):
+				plot.plot(timeseries, [v / 4 for v in series((0, i))], label = f'series {i}')
+			plot.set_xlim(10, 0)
+			plot.set_ylim(0, 1)
+			plot.legend()
+			unlockcanvas()
+			time.sleep(0.2)
+	except client.ShutDown:
+		pass
+
+canvaslock = threading.Lock()
+
+def lockcanvas():
+	canvaslock.acquire()
+
+def unlockcanvas():
+	canvaslock.release()
+
+def updatecanvas():
 	while running:
-		usages.append((time.time(), getcpuusage()))
-		prevtime,prevusages = usages[0]
-		currtime,currusages = usages[-1]
-		difference = [[c - p for p,c in zip(ps, cs)] for ps,cs in zip(prevusages, currusages)]
-		dt = currtime - prevtime
-		x.append(currtime)
-		for y,d in zip(ys, difference):
-			y.append(d[0] / dt / USER_HZ)
-		plot.clear()
-		now = time.time()
-		x2 = [now - t for t in x if now - t < 10]
-		for y in ys[1:]:
-			plot.plot(x2, y[-len(x2):])
-		plot.set_xlim(10, 0)
-		plot.set_ylim(0, 1)
+		lockcanvas()
 		canvas.draw()
-		time.sleep(0.2)
+		unlockcanvas()
 
 class FigureBuilder(tkbuilder.TkBuilder):
 	childrenargs = []
@@ -176,8 +206,9 @@ layout.build(root, parts)
 canvas = parts['canvas']
 
 running = True
-threading.Thread(target = loadcollector, args = (plot1,)).start()
-threading.Thread(target = usagecollector, args = (plot2,)).start()
+threading.Thread(target = loadgraph, args = (plot1,)).start()
+threading.Thread(target = cpugraph, args = (plot2,)).start()
+threading.Thread(target = updatecanvas).start()
 root.mainloop()
 client.shutdown()
-runnung = False
+running = False
