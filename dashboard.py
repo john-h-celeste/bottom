@@ -127,7 +127,7 @@ def getcpuusage():
 	return usages
 
 USER_HZ = 100
-def cpugraph(plot):
+def cpugraph(plot, detailplot):
 	try:
 		data = []
 		currusages = getcpuusage()
@@ -136,8 +136,13 @@ def cpugraph(plot):
 		# set up total cpu graph
 		totalcpu, = plot.plot([], [], label = 'Total CPU usage')
 		plot.set_xlim(10, 0)
-		plot.set_ylim(0, 4.5)
+		plot.set_ylim(0, 4.2)
 		plot.legend()
+
+		cpulines = [detailplot.plot([], [], label = f'CPU {i + 1} usage')[0] for i in range(cpucount)]
+		detailplot.set_xlim(10, 0)
+		detailplot.set_ylim(0, 1.1)
+		detailplot.legend()
 
 		# initialize sliding window of cpu usages
 		usages = collections.deque(maxlen = 5)
@@ -164,9 +169,9 @@ def cpugraph(plot):
 			timeseries = [now - t for t in series('time')]
 
 			lockcanvas()
-			# for j in range(1, 5):
-			# 	for i in range(10):
-			# 		plot.plot(timeseries, series((j, i)), label = f'cpu {j}, series {i}')
+			for i in range(cpucount):
+				cpulines[i].set_xdata(timeseries)
+				cpulines[i].set_ydata(series((i + 1, 'usage')))
 			totalcpu.set_xdata(timeseries)
 			totalcpu.set_ydata(series((0, 'usage')))
 			unlockcanvas()
@@ -174,19 +179,22 @@ def cpugraph(plot):
 	except client.ShutDown:
 		pass
 
-canvaslock = threading.Lock()
+canvaslocks = {name: threading.Lock() for name in ['main', 'cpu']}
 
-def lockcanvas():
-	canvaslock.acquire()
+def lockcanvas(name = 'main'):
+	canvaslocks[name].acquire()
 
-def unlockcanvas():
-	canvaslock.release()
+def unlockcanvas(name = 'main'):
+	canvaslocks[name].release()
 
 def updatecanvas():
 	while running:
 		lockcanvas()
 		canvas.draw()
 		unlockcanvas()
+		lockcanvas('cpu')
+		canvas2.draw()
+		unlockcanvas('cpu')
 
 class FigureBuilder(tkbuilder.TkBuilder):
 	childrenargs = []
@@ -197,12 +205,18 @@ class FigureBuilder(tkbuilder.TkBuilder):
 			table[canvas_key] = canvas
 		return canvas.get_tk_widget(), {}
 
-fig = Figure(figsize = (10, 5), dpi = 100)
-plot1 = fig.add_subplot(1, 2, 1)
-plot2 = fig.add_subplot(1, 2, 2)
+fig = Figure(figsize = (8, 1.5), dpi = 100, layout = 'constrained')
+loadplot = fig.add_subplot(1, 4, 1)
+cpuplot = fig.add_subplot(1, 4, 2)
+plot3 = fig.add_subplot(1, 4, 3)
+plot4 = fig.add_subplot(1, 4, 4)
+
+cpufig = Figure(figsize = (8, 6), dpi = 100, layout = 'constrained')
+cpudetail = cpufig.add_subplot(1, 1, 1)
 
 layout = tkbuilder.FrameBuilder(children = [
-	FigureBuilder(figure = fig, canvas_key = 'canvas', geometry = tkbuilder.Pack(anchor = 'n'))
+	FigureBuilder(figure = fig, canvas_key = 'canvas', geometry = tkbuilder.Pack(anchor = 'n')),
+	FigureBuilder(figure = cpufig, canvas_key = 'canvas2', geometry = tkbuilder.Pack(anchor = 'n')),
 ], geometry = tkbuilder.Pack())
 
 root = tkinter.Tk()
@@ -210,10 +224,11 @@ root = tkinter.Tk()
 parts = {}
 layout.build(root, parts)
 canvas = parts['canvas']
+canvas2 = parts['canvas2']
 
 running = True
-threading.Thread(target = loadgraph, args = (plot1,)).start()
-threading.Thread(target = cpugraph, args = (plot2,)).start()
+threading.Thread(target = loadgraph, args = (loadplot,)).start()
+threading.Thread(target = cpugraph, args = (cpuplot, cpudetail)).start()
 threading.Thread(target = updatecanvas).start()
 root.mainloop()
 client.shutdown()
