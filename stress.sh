@@ -1,6 +1,8 @@
 #! /bin/bash
 
-# stress daemon service - recieves commands from stressctl.sh via named pipe 
+# stress daemon service - recieves commands from stressctl.sh via named pipe
+
+set -ex
 
 PIPE=/tmp/stressctl.fifo
 
@@ -9,15 +11,14 @@ if [[ ! -p "$PIPE" ]]; then
 fi
 
 while true; do
-    if read line < "$PIPE"; then
-        echo 'recieved command:' "$line"
-        case $line in
-            cpu)
-                stress-ng --cpu 8 --timeout 30
-            ;;
-            *)
-                echo "command unrecognized"
-            ;;
-        esac
-    fi
+    read line < "$PIPE" || true
+    echo 'recieved command:' "$line"
+    case $line in
+        cpu)
+            stress-ng --cpu 8 --timeout 30
+        ;;
+        *)
+            echo "command unrecognized"
+        ;;
+    esac
 done
