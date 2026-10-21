@@ -22,10 +22,13 @@ if [ "$1" == sub ]; then
                 cat /proc/meminfo
             ;;
             lsblk)
-                lsblk -Jlb -o NAME,KNAME,PATH,MAJ:MIN,FSAVAIL,FSSIZE,FSTYPE,FSUSED,FSROOTS,FSVER,MOUNTPOINT,MOUNTPOINTS,LABEL,UUID,PTUUID,PTTYPE,PARTTYPE,PARTTYPENAME,PARTLABEL,PARTUUID,PARTFLAGS,RO,MODEL,SERIAL,SIZE,STATE,OWNER,GROUP,MODE,TYPE,WWN,PKNAME,REV,VENDOR | jq '.blockdevices'
+                lsblk -Jlb -o NAME,KNAME,PATH,MAJ:MIN,FSAVAIL,FSSIZE,FSTYPE,FSUSED,FSROOTS,FSVER,MOUNTPOINT,MOUNTPOINTS,LABEL,UUID,PTUUID,PTTYPE,PARTTYPE,PARTTYPENAME,PARTLABEL,PARTUUID,PARTFLAGS,RO,MODEL,SERIAL,SIZE,STATE,TYPE,WWN,PKNAME,REV,VENDOR | jq '.blockdevices'
             ;;
             diskstats)
                 cat /proc/diskstats
+            ;;
+            netstat)
+                netstat -s
             ;;
             *)
                 echo "command unrecognized"
