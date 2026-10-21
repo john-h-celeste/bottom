@@ -79,7 +79,7 @@ class Client:
 		self.sends([command])
 
 	def _recv(self):
-		while b'END ' not in self.buffer:
+		while b'END ' not in self.buffer or b'\n' not in self.buffer[self.buffer.index(b'END '):]:
 			self.buffer += self.s.recv(1024)
 		data,rest = self.buffer.split(b'END ', 1)
 		command,self.buffer = rest.split(b'\n', 1)
