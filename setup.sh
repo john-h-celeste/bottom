@@ -31,7 +31,7 @@ ExecStart=${DASHBOARDHOME}/server.sh
 WantedBy=multi-user.target
 EOF
 
-systemctl enable dashboard-server.service
+systemctl enable dashboard-server.service --now
 
 # add an entry to root crontab for the server restart process
 cat << EOF >> /etc/crontab
@@ -52,6 +52,6 @@ ExecStart=${DASHBOARDHOME}/stress.sh
 WantedBy=multi-user.target
 EOF
 
-systemctl enable stress-tester.service
+systemctl enable stress-tester.service --now
 
 echo 'Restart the cron service to enable server autorestart'
