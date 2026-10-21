@@ -15,7 +15,16 @@ while true; do
     echo 'recieved command:' "$line"
     case $line in
         cpu)
-            stress-ng --cpu 8 --timeout 30
+            stress-ng --cpu 8 --timeout 60
+        ;;
+        mmap)
+            stress-ng --vm 128 --timeout 60
+        ;;
+        disk)
+            stress-ng --hdd 4 --timeout 60
+        ;;
+        net)
+            stress-ng --sock 4 --timeout 60
         ;;
         *)
             echo "command unrecognized"
