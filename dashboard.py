@@ -81,17 +81,31 @@ def getmeminfo():
 	return meminfo
 
 def getdiskinfo():
-	lsblkdata = json.loads(conn.run(b'lsblk'))
 	diskstatsdata = conn.run(b'diskstats')
 	lines = diskstatsdata.split(b'\n')
 	assert lines[-1] == b''
 	diskstats = {}
 	for line in lines[:-1]:
 		major,minor,name,*parts = line.split()
-		parts = [int(major), int(minor)] + [int(part) for part in parts]
-		diskstats[str(name, 'utf-8')] = parts
-	print(repr(lsblkdata))
-	print(repr(diskstats))
+		parts = [str(name, 'utf-8')] + [int(part) for part in parts]
+		diskstats[f'{int(major)}:{int(minor)}'] = parts
+	return diskstats
+
+def getlsblk():
+	lsblkdata = json.loads(conn.run(b'lsblk'))
+	devs = {dev['kname']:dev for dev in lsblkdata}
+	roots = [] # the devices that are not partitions of others
+	for dev in lsblkdata:
+		dev['children'] = []
+	for dev in lsblkdata:
+		if dev['pkname'] is not None:
+			parent = devs[dev['pkname']]
+			parent['children'].append(dev)
+		else:
+			parent = None
+			roots.append(dev)
+		dev['parent'] = parent
+	return roots, devs
 
 def getnetinfo():
 	data = conn.run(b'netstat')
@@ -263,6 +277,46 @@ def netgraph(plot):
 	except client.ShutDown:
 		pass
 
+def diskgraph(plot):
+	try:
+		data = []
+
+		def getdiskusage():
+			diskinfos = [getdiskinfo()[dev['maj:min']] for dev in getlsblk()[0]]
+			readtotal = sum(disk[2] for disk in diskinfos)
+			writetotal = sum(disk[6] for disk in diskinfos)
+			return readtotal, writetotal
+
+		# initialize sliding window of network usage
+		diskstats = collections.deque(maxlen = 5)
+		for i in range(5):
+			diskstats.append((time.time(), getdiskusage()))
+			time.sleep(0.2)
+
+		while running:
+			now = time.time()
+			diskstats.append((now, getdiskusage()))
+			prevtime,prevdiskstats = diskstats[0]
+			currtime,currdiskstats = diskstats[-1]
+			difference = [c - p for p,c in zip(prevdiskstats, currdiskstats)]
+			dt = currtime - prevtime
+			entry = {'time': currtime, 'read': difference[0], 'write': difference[1]}
+
+			data.append(entry)
+			data = [x for x in data if now - x['time'] < 60]
+			series = lambda k: [x[k] for x in data]
+			timeseries = [now - t for t in series('time')]
+
+			with canvaslocks['main']:
+				plot.cla()
+				plot.set_xlim(10, 0)
+				plot.set_title('Disk')
+				plot.plot(timeseries, series('read'))
+				plot.plot(timeseries, series('write'))
+			time.sleep(0.2)
+	except client.ShutDown:
+		pass
+
 canvaslocks = {name: threading.Lock() for name in ['main', 'cpu', 'mem']}
 
 def lockcanvas(name = 'main'):
@@ -276,7 +330,7 @@ activecanvases = {'main'}
 
 def updatecanvas():
 	while running:
-		for active in activecanvases:
+		for active in [*activecanvases]:
 			with canvaslocks[active]:
 				canvases[active].draw()
 
@@ -295,7 +349,7 @@ if __name__ == '__main__':
 	cpuplot = fig.add_subplot(1, 5, 2)
 	memplot = fig.add_subplot(1, 5, 3)
 	netplot = fig.add_subplot(1, 5, 4)
-	plot5 = fig.add_subplot(1, 5, 5)
+	diskplot = fig.add_subplot(1, 5, 5)
 
 	cpufig = Figure(figsize = (8, 6), dpi = 100, layout = 'constrained')
 	cpudetail = cpufig.add_subplot(1, 1, 1)
@@ -334,6 +388,7 @@ if __name__ == '__main__':
 	threading.Thread(target = cpugraph, args = (cpuplot, cpudetail)).start()
 	threading.Thread(target = memgraph, args = (memplot, memdetail, swapdetail)).start()
 	threading.Thread(target = netgraph, args = (netplot,)).start()
+	threading.Thread(target = diskgraph, args = (diskplot,)).start()
 	threading.Thread(target = updatecanvas).start()
 	root.mainloop()
 	client.shutdown()
