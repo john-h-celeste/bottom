@@ -9,13 +9,14 @@ import time
 import threading
 import json
 import re
+import os
 
 import client
 
 load = collections.deque()
 
-#conn = client.connect('fd0f:e7d3:333e:4d00:a00:27ff:fe7d:e72', 8090)
-conn = client.connect('192.168.1.156', 8090)
+#conn = client.connect('fd0f:e7d3:333e:4d00:a00:27ff:fe7d:e72', 9375)
+conn = client.connect('192.168.1.156', 9375)
 print(client.clients)
 
 def getstats():
@@ -68,7 +69,7 @@ def getmeminfo():
 	lines = data.split(b'\n')
 	assert lines[-1] == b''
 	meminfo = {}
-	for line in lines:
+	for line in lines[:-1]:
 		key,value = line.split(b': ', 1)
 		value = value.lstrip(b' ')
 		match value.split(b' '):
@@ -105,14 +106,14 @@ def loadgraph(plot):
 			series = lambda k: [x[k] for x in data]
 			timeseries = [now - t for t in series('time')]
 
-			lockcanvas()
-			plot.clear()
-			plot.set_xlim(60, 0)
-			#plot.set_ylim(0, top = None)
-			plot.plot(timeseries, series('l1'))
-			plot.plot(timeseries, series('l5'))
-			plot.plot(timeseries, series('l15'))
-			unlockcanvas()
+			with canvaslocks['main']:
+				plot.clear()
+				plot.set_title('Load')
+				plot.set_xlim(60, 0)
+				#plot.set_ylim(0, top = None)
+				plot.plot(timeseries, series('l1'))
+				plot.plot(timeseries, series('l5'))
+				plot.plot(timeseries, series('l15'))
 			time.sleep(5)
 	except client.ShutDown:
 		pass
@@ -137,7 +138,7 @@ def cpugraph(plot, detailplot):
 		totalcpu, = plot.plot([], [], label = 'Total CPU usage')
 		plot.set_xlim(10, 0)
 		plot.set_ylim(0, 4.2)
-		plot.legend()
+		plot.set_title('CPU')
 
 		cpulines = [detailplot.plot([], [], label = f'CPU {i + 1} usage')[0] for i in range(cpucount)]
 		detailplot.set_xlim(10, 0)
@@ -161,25 +162,63 @@ def cpugraph(plot, detailplot):
 			for i,d in enumerate(difference):
 				for j,dd in enumerate(d):
 					entry[(i, j)] = dd / dt / USER_HZ
-				entry[(i, 'usage')] = (4 if i == 0 else 1) - (d[3] / dt / USER_HZ)
+				entry[(i, 'usage')] = max((4 if i == 0 else 1) - (d[3] / dt / USER_HZ), 0)
 
 			data.append(entry)
 			data = [x for x in data if now - x['time'] < 60]
 			series = lambda k: [x[k] for x in data]
 			timeseries = [now - t for t in series('time')]
 
-			lockcanvas()
-			for i in range(cpucount):
-				cpulines[i].set_xdata(timeseries)
-				cpulines[i].set_ydata(series((i + 1, 'usage')))
-			totalcpu.set_xdata(timeseries)
-			totalcpu.set_ydata(series((0, 'usage')))
-			unlockcanvas()
+			with canvaslocks['cpu']:
+				for i in range(cpucount):
+					cpulines[i].set_xdata(timeseries)
+					cpulines[i].set_ydata(series((i + 1, 'usage')))
+			with canvaslocks['main']:
+				totalcpu.set_xdata(timeseries)
+				totalcpu.set_ydata(series((0, 'usage')))
 			time.sleep(0.2)
 	except client.ShutDown:
 		pass
 
-canvaslocks = {name: threading.Lock() for name in ['main', 'cpu']}
+def memgraph(plot, memplot, swapplot):
+	try:
+		meminfo = getmeminfo()
+		data = []
+		while running:
+			now = time.time()
+			meminfo = getmeminfo()
+			entry = {'time': now, 'memused': meminfo['MemTotal'] - meminfo['MemFree'], 'swapused+': meminfo['MemTotal'] - meminfo['MemFree'] + meminfo['SwapTotal'] - meminfo['SwapFree'], 'swapused': meminfo['SwapTotal'] - meminfo['SwapFree']}
+
+			data.append(entry)
+			data = [x for x in data if now - x['time'] < 60]
+			series = lambda k: [x[k] for x in data]
+			timeseries = [now - t for t in series('time')]
+
+			with canvaslocks['main']:
+				plot.cla()
+				plot.set_title('Memory')
+				plot.set_xlim(10, 0)
+				plot.set_ylim(0, meminfo['MemTotal'] + meminfo['SwapTotal'])
+				plot.plot(timeseries, series('swapused+'))
+				plot.fill_between(timeseries, series('swapused+'), series('memused'), alpha = 0.2)
+				plot.plot(timeseries, series('memused'))
+				plot.fill_between(timeseries, series('memused'), alpha = 0.2)
+			with canvaslocks['mem']:
+				memplot.cla()
+				memplot.set_title('Memory Used')
+				memplot.set_xlim(10, 0)
+				memplot.set_ylim(0, meminfo['MemTotal'])
+				memplot.plot(timeseries, series('memused'))
+				swapplot.cla()
+				swapplot.set_title('Swap Used')
+				swapplot.set_xlim(10, 0)
+				swapplot.set_ylim(0, meminfo['SwapTotal'])
+				swapplot.plot(timeseries, series('swapused'))
+			time.sleep(0.1)
+	except client.ShutDown:
+		pass
+
+canvaslocks = {name: threading.Lock() for name in ['main', 'cpu', 'mem']}
 
 def lockcanvas(name = 'main'):
 	canvaslocks[name].acquire()
@@ -187,14 +226,14 @@ def lockcanvas(name = 'main'):
 def unlockcanvas(name = 'main'):
 	canvaslocks[name].release()
 
+canvases = {}
+activecanvases = {'main'}
+
 def updatecanvas():
 	while running:
-		lockcanvas()
-		canvas.draw()
-		unlockcanvas()
-		lockcanvas('cpu')
-		canvas2.draw()
-		unlockcanvas('cpu')
+		for active in activecanvases:
+			with canvaslocks[active]:
+				canvases[active].draw()
 
 class FigureBuilder(tkbuilder.TkBuilder):
 	childrenargs = []
@@ -205,31 +244,54 @@ class FigureBuilder(tkbuilder.TkBuilder):
 			table[canvas_key] = canvas
 		return canvas.get_tk_widget(), {}
 
-fig = Figure(figsize = (8, 1.5), dpi = 100, layout = 'constrained')
-loadplot = fig.add_subplot(1, 4, 1)
-cpuplot = fig.add_subplot(1, 4, 2)
-plot3 = fig.add_subplot(1, 4, 3)
-plot4 = fig.add_subplot(1, 4, 4)
+if __name__ == '__main__':
+	fig = Figure(figsize = (8, 1.5), dpi = 100, layout = 'constrained')
+	loadplot = fig.add_subplot(1, 5, 1)
+	cpuplot = fig.add_subplot(1, 5, 2)
+	memplot = fig.add_subplot(1, 5, 3)
+	plot4 = fig.add_subplot(1, 5, 4)
+	plot5 = fig.add_subplot(1, 5, 5)
 
-cpufig = Figure(figsize = (8, 6), dpi = 100, layout = 'constrained')
-cpudetail = cpufig.add_subplot(1, 1, 1)
+	cpufig = Figure(figsize = (8, 6), dpi = 100, layout = 'constrained')
+	cpudetail = cpufig.add_subplot(1, 1, 1)
 
-layout = tkbuilder.FrameBuilder(children = [
-	FigureBuilder(figure = fig, canvas_key = 'canvas', geometry = tkbuilder.Pack(anchor = 'n')),
-	FigureBuilder(figure = cpufig, canvas_key = 'canvas2', geometry = tkbuilder.Pack(anchor = 'n')),
-], geometry = tkbuilder.Pack())
+	memfig = Figure(figsize = (8, 6), dpi = 100, layout = 'constrained')
+	memdetail = memfig.add_subplot(1, 2, 1)
+	swapdetail = memfig.add_subplot(1, 2, 2)
 
-root = tkinter.Tk()
+	layout = tkbuilder.FrameBuilder(children = [
+		FigureBuilder(figure = fig, canvas_key = 'canvas', geometry = tkbuilder.Grid(row = 1, column = 1)),
+		tkbuilder.FrameBuilder(key = 'cpugraph', children = [
+			FigureBuilder(figure = cpufig, canvas_key = 'cpucanvas', geometry = tkbuilder.Pack(anchor = 'n')),
+		], geometry = tkbuilder.Grid(row = 2, column = 1)),
+		tkbuilder.FrameBuilder(key = 'memgraph', children = [
+			FigureBuilder(figure = memfig, canvas_key = 'memcanvas', geometry = tkbuilder.Pack(anchor = 'n')),
+		], geometry = tkbuilder.Grid(row = 2, column = 1)),
+	], geometry = tkbuilder.Pack())
 
-parts = {}
-layout.build(root, parts)
-canvas = parts['canvas']
-canvas2 = parts['canvas2']
+	root = tkinter.Tk()
 
-running = True
-threading.Thread(target = loadgraph, args = (loadplot,)).start()
-threading.Thread(target = cpugraph, args = (cpuplot, cpudetail)).start()
-threading.Thread(target = updatecanvas).start()
-root.mainloop()
-client.shutdown()
-running = False
+	parts = {}
+	layout.build(root, parts)
+
+	canvases['main'] = parts['canvas']
+	canvases['cpu'] = parts['cpucanvas']
+	canvases['mem'] = parts['memcanvas']
+
+	parts['cpugraph'].grid_remove()
+	parts['memgraph'].grid_remove()
+
+	parts['memgraph'].grid()
+	activecanvases.add('mem')
+
+	running = True
+	threading.Thread(target = loadgraph, args = (loadplot,)).start()
+	threading.Thread(target = cpugraph, args = (cpuplot, cpudetail)).start()
+	threading.Thread(target = memgraph, args = (memplot, memdetail, swapdetail)).start()
+	threading.Thread(target = updatecanvas).start()
+	root.mainloop()
+	client.shutdown()
+	running = False
+
+	time.sleep(5)
+	os._exit()
