@@ -93,6 +93,17 @@ def getdiskinfo():
 	print(repr(lsblkdata))
 	print(repr(diskstats))
 
+def getnetinfo():
+	data = conn.run(b'netstat')
+	lines = data.split(b'\n')
+	assert lines[-1] == b''
+	for line in lines[:-1]:
+		if line.startswith(b'    InOctets: '):
+			netin = int(line.split()[1])
+		if line.startswith(b'    OutOctets: '):
+			netout = int(line.split()[1])
+	return netin, netout
+
 def loadgraph(plot):
 	try:
 		data = []
@@ -218,6 +229,40 @@ def memgraph(plot, memplot, swapplot):
 	except client.ShutDown:
 		pass
 
+def netgraph(plot):
+	try:
+		data = []
+
+		# initialize sliding window of network usage
+		netstats = collections.deque(maxlen = 5)
+		for i in range(5):
+			netstats.append((time.time(), getnetinfo()))
+			time.sleep(0.2)
+
+		while running:
+			now = time.time()
+			netstats.append((now, getnetinfo()))
+			prevtime,prevnetstats = netstats[0]
+			currtime,currnetstats = netstats[-1]
+			difference = [c - p for p,c in zip(prevnetstats, currnetstats)]
+			dt = currtime - prevtime
+			entry = {'time': currtime, 'in': difference[0], 'out': difference[1]}
+
+			data.append(entry)
+			data = [x for x in data if now - x['time'] < 60]
+			series = lambda k: [x[k] for x in data]
+			timeseries = [now - t for t in series('time')]
+
+			with canvaslocks['main']:
+				plot.cla()
+				plot.set_xlim(10, 0)
+				plot.set_title('Network')
+				plot.plot(timeseries, series('in'))
+				plot.plot(timeseries, series('out'))
+			time.sleep(0.2)
+	except client.ShutDown:
+		pass
+
 canvaslocks = {name: threading.Lock() for name in ['main', 'cpu', 'mem']}
 
 def lockcanvas(name = 'main'):
@@ -249,7 +294,7 @@ if __name__ == '__main__':
 	loadplot = fig.add_subplot(1, 5, 1)
 	cpuplot = fig.add_subplot(1, 5, 2)
 	memplot = fig.add_subplot(1, 5, 3)
-	plot4 = fig.add_subplot(1, 5, 4)
+	netplot = fig.add_subplot(1, 5, 4)
 	plot5 = fig.add_subplot(1, 5, 5)
 
 	cpufig = Figure(figsize = (8, 6), dpi = 100, layout = 'constrained')
@@ -288,10 +333,11 @@ if __name__ == '__main__':
 	threading.Thread(target = loadgraph, args = (loadplot,)).start()
 	threading.Thread(target = cpugraph, args = (cpuplot, cpudetail)).start()
 	threading.Thread(target = memgraph, args = (memplot, memdetail, swapdetail)).start()
+	threading.Thread(target = netgraph, args = (netplot,)).start()
 	threading.Thread(target = updatecanvas).start()
 	root.mainloop()
 	client.shutdown()
 	running = False
 
-	time.sleep(5)
-	os._exit()
+	time.sleep(0.5)
+	os._exit(0)
