@@ -358,14 +358,30 @@ if __name__ == '__main__':
 	memdetail = memfig.add_subplot(1, 2, 1)
 	swapdetail = memfig.add_subplot(1, 2, 2)
 
+	def setcpugraph():
+		parts['cpugraph'].grid_remove()
+		parts['memgraph'].grid_remove()
+
+		parts['cpugraph'].grid()
+		activecanvases.add('cpu')
+
+	def setmemgraph():
+		parts['cpugraph'].grid_remove()
+		parts['memgraph'].grid_remove()
+
+		parts['memgraph'].grid()
+		activecanvases.add('mem')
+
 	layout = tkbuilder.FrameBuilder(children = [
-		FigureBuilder(figure = fig, canvas_key = 'canvas', geometry = tkbuilder.Grid(row = 1, column = 1)),
+		FigureBuilder(figure = fig, canvas_key = 'canvas', geometry = tkbuilder.Grid(row = 0, column = 1, columnspan = 2)),
+		tkbuilder.ButtonBuilder(text = 'CPU', command = setcpugraph, geometry = tkbuilder.Grid(row = 1, column = 1)),
+		tkbuilder.ButtonBuilder(text = 'Memory', command = setmemgraph, geometry = tkbuilder.Grid(row = 1, column = 2)),
 		tkbuilder.FrameBuilder(key = 'cpugraph', children = [
 			FigureBuilder(figure = cpufig, canvas_key = 'cpucanvas', geometry = tkbuilder.Pack(anchor = 'n')),
-		], geometry = tkbuilder.Grid(row = 2, column = 1)),
+		], geometry = tkbuilder.Grid(row = 2, column = 1, columnspan = 2)),
 		tkbuilder.FrameBuilder(key = 'memgraph', children = [
 			FigureBuilder(figure = memfig, canvas_key = 'memcanvas', geometry = tkbuilder.Pack(anchor = 'n')),
-		], geometry = tkbuilder.Grid(row = 2, column = 1)),
+		], geometry = tkbuilder.Grid(row = 2, column = 1, columnspan = 2)),
 	], geometry = tkbuilder.Pack())
 
 	root = tkinter.Tk()
