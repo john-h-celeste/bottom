@@ -15,7 +15,7 @@ if [[ $# -ne 1 ]]; then
     echo "Send a command to the stress daemon"
 fi
 
-{ echo $1 > "$PIPE"; exit 0 } &
+{ echo $1 > "$PIPE"; exit 0; } &
 
 sleep 5
 echo "stress service is not currently running, exiting."
