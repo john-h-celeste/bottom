@@ -162,7 +162,7 @@ def cpugraph(plot, detailplot):
 		# set up total cpu graph
 		totalcpu, = plot.plot([], [], label = 'Total CPU usage')
 		plot.set_xlim(10, 0)
-		plot.set_ylim(0, 4.2)
+		plot.set_ylim(0, cpucount + 0.2)
 		plot.set_title('CPU')
 
 		cpulines = [detailplot.plot([], [], label = f'CPU {i + 1} usage')[0] for i in range(cpucount)]
@@ -187,7 +187,7 @@ def cpugraph(plot, detailplot):
 			for i,d in enumerate(difference):
 				for j,dd in enumerate(d):
 					entry[(i, j)] = dd / dt / USER_HZ
-				entry[(i, 'usage')] = max((4 if i == 0 else 1) - (d[3] / dt / USER_HZ), 0)
+				entry[(i, 'usage')] = max((cpucount if i == 0 else 1) - (d[3] / dt / USER_HZ), 0)
 
 			data.append(entry)
 			data = [x for x in data if now - x['time'] < 60]
