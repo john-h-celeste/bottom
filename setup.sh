@@ -12,11 +12,17 @@ DASHBOARDHOME=$(realpath ~dashboard)
 
 # copy the service scripts and give them appropriate permissions
 cp --target-directory "${DASHBOARDHOME}" server.sh restartserver.sh stress.sh
-chmod 0500 "${DASHBOARDHOME}/server.sh"
+chmod 0555 "${DASHBOARDHOME}/server.sh"
 chmod 0500 "${DASHBOARDHOME}/restartserver.sh" # this is run by root so it can use systemctl
-chmod 0500 "${DASHBOARDHOME}/stress.sh"
+chmod 0555 "${DASHBOARDHOME}/stress.sh"
+
+cp --target-directory /usr/bin stressctl.sh
+chmod 0555 "/usr/bin/stressctl.sh"
+chmod 0755 "${DASHBOARDHOME}"
 
 chown dashboard:dashboard "${DASHBOARDHOME}/server.sh" "${DASHBOARDHOME}/stress.sh"
+
+chcon -t bin_t "${DASHBOARDHOME}/server.sh" "${DASHBOARDHOME}/restartserver.sh" "${DASHBOARDHOME}/stress.sh" "/usr/bin/stressctl.sh"
 
 # add a service for the dashboard server
 cat << EOF > /usr/lib/systemd/system/dashboard-server.service
@@ -26,6 +32,8 @@ Description=Linux Observability Dashboard Server Midterm Project Service
 [Service]
 Type=simple
 ExecStart=${DASHBOARDHOME}/server.sh
+User=dashboard
+Group=dashboard
 
 [Install]
 WantedBy=multi-user.target
@@ -47,6 +55,8 @@ Description=Linux Observability Dashboard Server Midterm Project Stress Daemon A
 [Service]
 Type=simple
 ExecStart=${DASHBOARDHOME}/stress.sh
+User=dashboard
+Group=dashboard
 
 [Install]
 WantedBy=multi-user.target
