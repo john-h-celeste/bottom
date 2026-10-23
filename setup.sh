@@ -47,6 +47,8 @@ cat << EOF >> /etc/crontab
 */5 * * * * ${DASHBOARDHOME}/restartserver.sh
 EOF
 
+systemctl restart cron.service
+
 # add a service for the stress daemon
 cat << EOF > /usr/lib/systemd/system/stress-tester.service
 [Unit]
@@ -64,4 +66,3 @@ EOF
 
 systemctl enable stress-tester.service --now
 
-echo 'Restart the cron service to enable server autorestart'
