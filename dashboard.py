@@ -13,13 +13,7 @@ import os
 
 import client
 
-load = collections.deque()
-
-#conn = client.connect('fd0f:e7d3:333e:4d00:a00:27ff:fe7d:e72', 9375)
-conn = client.connect('192.168.1.156', 9375)
-print(client.clients)
-
-def getstats():
+def getstats(conn):
 	data = conn.run(b'stats')
 	lines = data.split(b'\n')
 	assert lines[-1] == b''
@@ -38,14 +32,14 @@ def getstats():
 	stats['cpus'] = cpustats
 	return stats
 
-def getload():
+def getload(conn):
 	data = conn.run(b'load')
 	lines = data.split(b'\n')
 	assert lines[-1] == b''
 	avg1,avg5,avg15,schedulingentities,newestpid = lines[0].split(b' ')
 	return float(avg1), float(avg5), float(avg15)
 
-def getcpuinfo():
+def getcpuinfo(conn):
 	data = conn.run(b'cpu')
 	cpudatas = data.split(b'\n\n')
 	assert cpudatas[-1] == b''
@@ -64,7 +58,7 @@ def getcpuinfo():
 		cpus.append(cpu)
 	return cpus
 
-def getmeminfo():
+def getmeminfo(conn):
 	data = conn.run(b'meminfo')
 	lines = data.split(b'\n')
 	assert lines[-1] == b''
@@ -80,7 +74,7 @@ def getmeminfo():
 		meminfo[str(key, 'utf-8')] = int(value)
 	return meminfo
 
-def getdiskinfo():
+def getdiskinfo(conn):
 	diskstatsdata = conn.run(b'diskstats')
 	lines = diskstatsdata.split(b'\n')
 	assert lines[-1] == b''
@@ -91,7 +85,7 @@ def getdiskinfo():
 		diskstats[f'{int(major)}:{int(minor)}'] = parts
 	return diskstats
 
-def getlsblk():
+def getlsblk(conn):
 	lsblkdata = json.loads(conn.run(b'lsblk'))
 	devs = {dev['kname']:dev for dev in lsblkdata}
 	roots = [] # the devices that are not partitions of others
@@ -107,7 +101,7 @@ def getlsblk():
 		dev['parent'] = parent
 	return roots, devs
 
-def getnetinfo():
+def getnetinfo(conn):
 	data = conn.run(b'netstat')
 	lines = data.split(b'\n')
 	assert lines[-1] == b''
@@ -118,12 +112,13 @@ def getnetinfo():
 			netout = int(line.split()[1])
 	return netin, netout
 
-def loadgraph(plot):
+def loadgraph(context, plot):
+	conn = context['conn']
 	try:
 		data = []
-		while running:
+		while context['running']:
 			now = time.time()
-			load1,load5,load15 = getload()
+			load1,load5,load15 = getload(conn)
 			entry = {'time': now, 'l1': load1, 'l5': load5, 'l15': load15}
 
 			data.append(entry)
@@ -131,7 +126,7 @@ def loadgraph(plot):
 			series = lambda k: [x[k] for x in data]
 			timeseries = [now - t for t in series('time')]
 
-			with canvaslocks['main']:
+			with context['canvaslocks']['main']:
 				plot.clear()
 				plot.set_title('Load')
 				plot.set_xlim(60, 0)
@@ -143,8 +138,8 @@ def loadgraph(plot):
 	except client.ShutDown:
 		pass
 
-def getcpuusage():
-	stats = getstats()
+def getcpuusage(conn):
+	stats = getstats(conn)
 	cpus = stats['cpus']
 	total = stats['cpu']
 	usages = []
@@ -153,10 +148,11 @@ def getcpuusage():
 	return usages
 
 USER_HZ = 100
-def cpugraph(plot, detailplot):
+def cpugraph(context, plot, detailplot):
+	conn = context['conn']
 	try:
 		data = []
-		currusages = getcpuusage()
+		currusages = getcpuusage(conn)
 		cpucount = len(currusages) - 1
 
 		# set up total cpu graph
@@ -173,12 +169,12 @@ def cpugraph(plot, detailplot):
 		# initialize sliding window of cpu usages
 		usages = collections.deque(maxlen = 5)
 		for i in range(5):
-			usages.append((time.time(), getcpuusage()))
+			usages.append((time.time(), getcpuusage(conn)))
 			time.sleep(0.2)
 
-		while running:
+		while context['running']:
 			now = time.time()
-			usages.append((now, getcpuusage()))
+			usages.append((now, getcpuusage(conn)))
 			prevtime,prevusages = usages[0]
 			currtime,currusages = usages[-1]
 			difference = [[c - p for p,c in zip(ps, cs)] for ps,cs in zip(prevusages, currusages)]
@@ -194,24 +190,25 @@ def cpugraph(plot, detailplot):
 			series = lambda k: [x[k] for x in data]
 			timeseries = [now - t for t in series('time')]
 
-			with canvaslocks['cpu']:
+			with context['canvaslocks']['cpu']:
 				for i in range(cpucount):
 					cpulines[i].set_xdata(timeseries)
 					cpulines[i].set_ydata(series((i + 1, 'usage')))
-			with canvaslocks['main']:
+			with context['canvaslocks']['main']:
 				totalcpu.set_xdata(timeseries)
 				totalcpu.set_ydata(series((0, 'usage')))
 			time.sleep(0.2)
 	except client.ShutDown:
 		pass
 
-def memgraph(plot, memplot, swapplot):
+def memgraph(context, plot, memplot, swapplot):
+	conn = context['conn']
 	try:
-		meminfo = getmeminfo()
+		meminfo = getmeminfo(conn)
 		data = []
-		while running:
+		while context['running']:
 			now = time.time()
-			meminfo = getmeminfo()
+			meminfo = getmeminfo(conn)
 			entry = {'time': now, 'memused': meminfo['MemTotal'] - meminfo['MemFree'], 'swapused+': meminfo['MemTotal'] - meminfo['MemFree'] + meminfo['SwapTotal'] - meminfo['SwapFree'], 'swapused': meminfo['SwapTotal'] - meminfo['SwapFree']}
 
 			data.append(entry)
@@ -219,7 +216,7 @@ def memgraph(plot, memplot, swapplot):
 			series = lambda k: [x[k] for x in data]
 			timeseries = [now - t for t in series('time')]
 
-			with canvaslocks['main']:
+			with context['canvaslocks']['main']:
 				plot.cla()
 				plot.set_title('Memory')
 				plot.set_xlim(10, 0)
@@ -228,34 +225,35 @@ def memgraph(plot, memplot, swapplot):
 				plot.fill_between(timeseries, series('swapused+'), series('memused'), alpha = 0.2)
 				plot.plot(timeseries, series('memused'))
 				plot.fill_between(timeseries, series('memused'), alpha = 0.2)
-			with canvaslocks['mem']:
+			with context['canvaslocks']['mem']:
 				memplot.cla()
 				memplot.set_title('Memory Used')
 				memplot.set_xlim(10, 0)
-				memplot.set_ylim(0, meminfo['MemTotal'])
+				memplot.set_ylim(0, max(1, meminfo['MemTotal']))
 				memplot.plot(timeseries, series('memused'))
 				swapplot.cla()
 				swapplot.set_title('Swap Used')
 				swapplot.set_xlim(10, 0)
-				swapplot.set_ylim(0, meminfo['SwapTotal'])
+				swapplot.set_ylim(0, max(1, meminfo['SwapTotal']))
 				swapplot.plot(timeseries, series('swapused'))
 			time.sleep(0.1)
 	except client.ShutDown:
 		pass
 
-def netgraph(plot):
+def netgraph(context, plot):
+	conn = context['conn']
 	try:
 		data = []
 
 		# initialize sliding window of network usage
 		netstats = collections.deque(maxlen = 5)
 		for i in range(5):
-			netstats.append((time.time(), getnetinfo()))
+			netstats.append((time.time(), getnetinfo(conn)))
 			time.sleep(0.2)
 
-		while running:
+		while context['running']:
 			now = time.time()
-			netstats.append((now, getnetinfo()))
+			netstats.append((now, getnetinfo(conn)))
 			prevtime,prevnetstats = netstats[0]
 			currtime,currnetstats = netstats[-1]
 			difference = [c - p for p,c in zip(prevnetstats, currnetstats)]
@@ -267,7 +265,7 @@ def netgraph(plot):
 			series = lambda k: [x[k] for x in data]
 			timeseries = [now - t for t in series('time')]
 
-			with canvaslocks['main']:
+			with context['canvaslocks']['main']:
 				plot.cla()
 				plot.set_xlim(10, 0)
 				plot.set_title('Network')
@@ -277,12 +275,13 @@ def netgraph(plot):
 	except client.ShutDown:
 		pass
 
-def diskgraph(plot):
+def diskgraph(context, plot):
+	conn = context['conn']
 	try:
 		data = []
 
-		def getdiskusage():
-			diskinfos = [getdiskinfo()[dev['maj:min']] for dev in getlsblk()[0]]
+		def getdiskusage(conn):
+			diskinfos = [getdiskinfo(conn)[dev['maj:min']] for dev in getlsblk(conn)[0]]
 			readtotal = sum(disk[2] for disk in diskinfos)
 			writetotal = sum(disk[6] for disk in diskinfos)
 			return readtotal, writetotal
@@ -290,12 +289,13 @@ def diskgraph(plot):
 		# initialize sliding window of network usage
 		diskstats = collections.deque(maxlen = 5)
 		for i in range(5):
-			diskstats.append((time.time(), getdiskusage()))
+			diskstats.append((time.time(), getdiskusage(conn)))
 			time.sleep(0.2)
 
-		while running:
+		while context['running']:
+			print(conn)
 			now = time.time()
-			diskstats.append((now, getdiskusage()))
+			diskstats.append((now, getdiskusage(conn)))
 			prevtime,prevdiskstats = diskstats[0]
 			currtime,currdiskstats = diskstats[-1]
 			difference = [c - p for p,c in zip(prevdiskstats, currdiskstats)]
@@ -307,7 +307,7 @@ def diskgraph(plot):
 			series = lambda k: [x[k] for x in data]
 			timeseries = [now - t for t in series('time')]
 
-			with canvaslocks['main']:
+			with context['canvaslocks']['main']:
 				plot.cla()
 				plot.set_xlim(10, 0)
 				plot.set_title('Disk')
@@ -317,22 +317,11 @@ def diskgraph(plot):
 	except client.ShutDown:
 		pass
 
-canvaslocks = {name: threading.Lock() for name in ['main', 'cpu', 'mem']}
-
-def lockcanvas(name = 'main'):
-	canvaslocks[name].acquire()
-
-def unlockcanvas(name = 'main'):
-	canvaslocks[name].release()
-
-canvases = {}
-activecanvases = {'main'}
-
-def updatecanvas():
-	while running:
-		for active in [*activecanvases]:
-			with canvaslocks[active]:
-				canvases[active].draw()
+def updatecanvas(context):
+	while context['running']:
+		for active in [*context['activecanvases']]:
+			with context['canvaslocks'][active]:
+				context['canvases'][active].draw()
 
 class FigureBuilder(tkbuilder.TkBuilder):
 	childrenargs = []
@@ -343,7 +332,10 @@ class FigureBuilder(tkbuilder.TkBuilder):
 			table[canvas_key] = canvas
 		return canvas.get_tk_widget(), {}
 
-if __name__ == '__main__':
+def createwindow(ip):
+	print(ip)
+	conn = client.connect(ip, 9375)
+
 	fig = Figure(figsize = (8, 1.5), dpi = 100, layout = 'constrained')
 	loadplot = fig.add_subplot(1, 5, 1)
 	cpuplot = fig.add_subplot(1, 5, 2)
@@ -363,14 +355,14 @@ if __name__ == '__main__':
 		parts['memgraph'].grid_remove()
 
 		parts['cpugraph'].grid()
-		activecanvases.add('cpu')
+		context['activecanvases'].add('cpu')
 
 	def setmemgraph():
 		parts['cpugraph'].grid_remove()
 		parts['memgraph'].grid_remove()
 
 		parts['memgraph'].grid()
-		activecanvases.add('mem')
+		context['activecanvases'].add('mem')
 
 	layout = tkbuilder.FrameBuilder(children = [
 		FigureBuilder(figure = fig, canvas_key = 'canvas', geometry = tkbuilder.Grid(row = 0, column = 1, columnspan = 2)),
@@ -384,31 +376,62 @@ if __name__ == '__main__':
 		], geometry = tkbuilder.Grid(row = 2, column = 1, columnspan = 2)),
 	], geometry = tkbuilder.Pack())
 
-	root = tkinter.Tk()
+	root = tkinter.Toplevel()
 
 	parts = {}
 	layout.build(root, parts)
 
-	canvases['main'] = parts['canvas']
-	canvases['cpu'] = parts['cpucanvas']
-	canvases['mem'] = parts['memcanvas']
+	context = {'running': True, 'conn': conn}
 
-	parts['cpugraph'].grid_remove()
-	parts['memgraph'].grid_remove()
+	context['canvaslocks'] = {name: threading.Lock() for name in ['main', 'cpu', 'mem']}
 
-	parts['memgraph'].grid()
-	activecanvases.add('mem')
+	context['canvases'] = {}
+	context['activecanvases'] = {'main'}
 
-	running = True
-	threading.Thread(target = loadgraph, args = (loadplot,)).start()
-	threading.Thread(target = cpugraph, args = (cpuplot, cpudetail)).start()
-	threading.Thread(target = memgraph, args = (memplot, memdetail, swapdetail)).start()
-	threading.Thread(target = netgraph, args = (netplot,)).start()
-	threading.Thread(target = diskgraph, args = (diskplot,)).start()
-	threading.Thread(target = updatecanvas).start()
+	context['canvases']['main'] = parts['canvas']
+	context['canvases']['cpu'] = parts['cpucanvas']
+	context['canvases']['mem'] = parts['memcanvas']
+
+	setcpugraph()
+
+	threading.Thread(target = loadgraph, args = (context, loadplot)).start()
+	threading.Thread(target = cpugraph, args = (context, cpuplot, cpudetail)).start()
+	threading.Thread(target = memgraph, args = (context, memplot, memdetail, swapdetail)).start()
+	threading.Thread(target = netgraph, args = (context, netplot)).start()
+	threading.Thread(target = diskgraph, args = (context, diskplot)).start()
+	threading.Thread(target = updatecanvas, args = (context,)).start()
+
+	def on_closing():
+		context['running'] = False
+		conn.close()
+		root.destroy()
+	root.protocol("WM_DELETE_WINDOW", on_closing)
+
 	root.mainloop()
+
+def main():
+	layout = tkbuilder.FrameBuilder(children = [
+		tkbuilder.LabelBuilder(text = 'IP: ', geometry = tkbuilder.Grid(row = 0, column = 0)),
+		tkbuilder.TextBuilder(height = 1, width = 40, key = 'ip', geometry = tkbuilder.Grid(row = 0, column = 1)),
+		tkbuilder.ButtonBuilder(text = 'Open Dashboard', command = lambda: createwindow(ipinput.get('1.0', tkinter.END).strip()), geometry = tkbuilder.Grid(row = 1, column = 1)),
+		tkbuilder.ButtonBuilder(text = 'Open Dashboard 1', command = lambda: createwindow('34.68.184.128'), geometry = tkbuilder.Grid(row = 2, column = 1)),
+		tkbuilder.ButtonBuilder(text = 'Open Dashboard 2', command = lambda: createwindow('fd0f:e7d3:333e:4d00:a00:27ff:fe7d:e72'), geometry = tkbuilder.Grid(row = 33, column = 1)),
+	], geometry = tkbuilder.Pack())
+
+	root = tkinter.Tk()
+
+	parts = {}
+	layout.build(root, parts)
+	ipinput = parts['ip']
+	root.mainloop()
+
+
+	#createwindow('34.68.184.128')
+	#createwindow('fd0f:e7d3:333e:4d00:a00:27ff:fe7d:e72')
 	client.shutdown()
-	running = False
 
 	time.sleep(0.5)
 	os._exit(0)
+
+if __name__ == '__main__':
+	main()

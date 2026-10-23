@@ -62,6 +62,10 @@ class Client:
 		clients.append(self)
 		selector.register(self.s, selectors.EVENT_READ, self)
 
+	def close(self):
+		self.s.close()
+		clients.remove(self)
+
 	def _sends(self, commands):
 		assert all(b'\n' not in command for command in commands)
 		self.s.sendall(b''.join(bytes(command) + b'\n' for command in commands))
