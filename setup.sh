@@ -39,12 +39,10 @@ Group=dashboard
 WantedBy=multi-user.target
 EOF
 
-systemctl enable dashboard-server.service --now
-
 # add an entry to root crontab for the server restart process
 cat << EOF >> /etc/crontab
 
-*/5 * * * * ${DASHBOARDHOME}/restartserver.sh
+*/5 * * * * root ${DASHBOARDHOME}/restartserver.sh
 EOF
 
 systemctl restart cron.service
@@ -64,5 +62,8 @@ Group=dashboard
 WantedBy=multi-user.target
 EOF
 
+systemctl restart cron.service || systemctl restart crond.service
+
+systemctl enable dashboard-server.service --now
 systemctl enable stress-tester.service --now
 
