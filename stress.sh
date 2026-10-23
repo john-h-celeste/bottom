@@ -6,8 +6,16 @@ set -ex
 
 PIPE=/tmp/stressctl.fifo
 
-if [[ ! -p "$PIPE" ]]; then
-    mkfifo "$PIPE"
+rm -f "$PIPE"
+
+mkfifo "$PIPE"
+
+trap "rm -f \"$PIPE\"" EXIT
+
+chmod a+w "$PIPE"
+
+if [[ ! ( -w . && -r . ) ]]; then
+    cd /tmp
 fi
 
 while true; do
