@@ -11,18 +11,18 @@ useradd --comment 'Observability Dashboard' -m --system --shell '/bin/false' --u
 DASHBOARDHOME=$(realpath ~dashboard)
 
 # copy the service scripts and give them appropriate permissions
-cp --target-directory "${DASHBOARDHOME}" server.sh restartserver.sh stress.sh
-chmod 0555 "${DASHBOARDHOME}/server.sh"
-chmod 0500 "${DASHBOARDHOME}/restartserver.sh" # this is run by root so it can use systemctl
-chmod 0555 "${DASHBOARDHOME}/stress.sh"
+mkdir "${DASHBOARDHOME}/bin"
+
+cp --target-directory "${DASHBOARDHOME}/bin" server.sh restartserver.sh stress.sh
+chmod 0555 "${DASHBOARDHOME}/bin/server.sh"
+chmod 0500 "${DASHBOARDHOME}/bin/restartserver.sh" # this is run by root so it can use systemctl
+chmod 0555 "${DASHBOARDHOME}/bin/stress.sh"
 
 cp --target-directory /usr/bin stressctl.sh
 chmod 0555 "/usr/bin/stressctl.sh"
 chmod 0755 "${DASHBOARDHOME}"
 
-chown dashboard:dashboard "${DASHBOARDHOME}/server.sh" "${DASHBOARDHOME}/stress.sh"
-
-chcon -t bin_t "${DASHBOARDHOME}/server.sh" "${DASHBOARDHOME}/restartserver.sh" "${DASHBOARDHOME}/stress.sh" "/usr/bin/stressctl.sh"
+chown dashboard:dashboard "${DASHBOARDHOME}/bin/server.sh" "${DASHBOARDHOME}/bin/stress.sh"
 
 # add a service for the dashboard server
 cat << EOF > /usr/lib/systemd/system/dashboard-server.service
@@ -31,7 +31,7 @@ Description=Linux Observability Dashboard Server Midterm Project Service
 
 [Service]
 Type=simple
-ExecStart=${DASHBOARDHOME}/server.sh
+ExecStart=${DASHBOARDHOME}/bin/server.sh
 User=dashboard
 Group=dashboard
 
@@ -42,7 +42,7 @@ EOF
 # add an entry to root crontab for the server restart process
 cat << EOF >> /etc/crontab
 
-*/5 * * * * root ${DASHBOARDHOME}/restartserver.sh
+*/5 * * * * root ${DASHBOARDHOME}/bin/restartserver.sh
 EOF
 
 # add a service for the stress daemon
@@ -52,7 +52,7 @@ Description=Linux Observability Dashboard Server Midterm Project Stress Daemon A
 
 [Service]
 Type=simple
-ExecStart=${DASHBOARDHOME}/stress.sh
+ExecStart=${DASHBOARDHOME}/bin/stress.sh
 User=dashboard
 Group=dashboard
 
