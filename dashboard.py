@@ -415,8 +415,6 @@ def main():
 		tkbuilder.LabelBuilder(text = 'IP: ', geometry = tkbuilder.Grid(row = 0, column = 0)),
 		tkbuilder.TextBuilder(height = 1, width = 40, key = 'ip', geometry = tkbuilder.Grid(row = 0, column = 1)),
 		tkbuilder.ButtonBuilder(text = 'Open Dashboard', command = lambda: createwindow(ipinput.get('1.0', tkinter.END).strip()), geometry = tkbuilder.Grid(row = 1, column = 1)),
-		tkbuilder.ButtonBuilder(text = 'Open Dashboard 1', command = lambda: createwindow('34.68.184.128'), geometry = tkbuilder.Grid(row = 2, column = 1)),
-		tkbuilder.ButtonBuilder(text = 'Open Dashboard 2', command = lambda: createwindow('fd0f:e7d3:333e:4d00:a00:27ff:fe7d:e72'), geometry = tkbuilder.Grid(row = 33, column = 1)),
 	], geometry = tkbuilder.Pack())
 
 	root = tkinter.Tk()
