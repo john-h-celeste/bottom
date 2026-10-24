@@ -293,7 +293,6 @@ def diskgraph(context, plot):
 			time.sleep(0.2)
 
 		while context['running']:
-			print(conn)
 			now = time.time()
 			diskstats.append((now, getdiskusage(conn)))
 			prevtime,prevdiskstats = diskstats[0]
@@ -365,18 +364,20 @@ def createwindow(ip):
 		context['activecanvases'].add('mem')
 
 	layout = tkbuilder.FrameBuilder(children = [
-		FigureBuilder(figure = fig, canvas_key = 'canvas', geometry = tkbuilder.Grid(row = 0, column = 1, columnspan = 2)),
-		tkbuilder.ButtonBuilder(text = 'CPU', command = setcpugraph, geometry = tkbuilder.Grid(row = 1, column = 1)),
-		tkbuilder.ButtonBuilder(text = 'Memory', command = setmemgraph, geometry = tkbuilder.Grid(row = 1, column = 2)),
+		tkbuilder.LabelBuilder(text = ip, geometry = tkbuilder.Grid(row = 0, column = 1, columnspan = 2)),
+		FigureBuilder(figure = fig, canvas_key = 'canvas', geometry = tkbuilder.Grid(row = 1, column = 1, columnspan = 2)),
+		tkbuilder.ButtonBuilder(text = 'CPU', command = setcpugraph, geometry = tkbuilder.Grid(row = 2, column = 1)),
+		tkbuilder.ButtonBuilder(text = 'Memory', command = setmemgraph, geometry = tkbuilder.Grid(row = 2, column = 2)),
 		tkbuilder.FrameBuilder(key = 'cpugraph', children = [
 			FigureBuilder(figure = cpufig, canvas_key = 'cpucanvas', geometry = tkbuilder.Pack(anchor = 'n')),
-		], geometry = tkbuilder.Grid(row = 2, column = 1, columnspan = 2)),
+		], geometry = tkbuilder.Grid(row = 3, column = 1, columnspan = 2)),
 		tkbuilder.FrameBuilder(key = 'memgraph', children = [
 			FigureBuilder(figure = memfig, canvas_key = 'memcanvas', geometry = tkbuilder.Pack(anchor = 'n')),
-		], geometry = tkbuilder.Grid(row = 2, column = 1, columnspan = 2)),
+		], geometry = tkbuilder.Grid(row = 3, column = 1, columnspan = 2)),
 	], geometry = tkbuilder.Pack())
 
 	root = tkinter.Toplevel()
+	root.title(ip)
 
 	parts = {}
 	layout.build(root, parts)
