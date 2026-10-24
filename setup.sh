@@ -45,8 +45,6 @@ cat << EOF >> /etc/crontab
 */5 * * * * root ${DASHBOARDHOME}/restartserver.sh
 EOF
 
-systemctl restart cron.service
-
 # add a service for the stress daemon
 cat << EOF > /usr/lib/systemd/system/stress-tester.service
 [Unit]
